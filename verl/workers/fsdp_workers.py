@@ -187,8 +187,7 @@ class RobActorRolloutRefWorker(Worker):
         if self.rank == 0:
             print(f'Model config after override: {actor_model_config}')
 
-
-        init_context = get_init_weight_context_manager(use_meta_tensor=not actor_model_config.tie_word_embeddings)
+        init_context = get_init_weight_context_manager(use_meta_tensor=not actor_model_config.text_config.tie_word_embeddings)
 
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")

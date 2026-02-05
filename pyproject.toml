@@ -5,9 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "debugpy>=1.8.20",
     "json-numpy>=2.1.1",
     "libero",
-    "timm>=1.0.24",
+    "ray[default]>=2.53.0",
+    "timm==0.9.16",
     "verl[gpu]",
 ]
 

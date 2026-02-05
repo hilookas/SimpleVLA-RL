@@ -87,9 +87,6 @@ target/
 # IPython Notebook
 .ipynb_checkpoints
 
-# pyenv
-.python-version
-
 # celery beat schedule file
 celerybeat-schedule
 
@@ -118,9 +115,6 @@ tests/e2e/toy_examples/deepspeed/synchronous/output.txt
 
 # vim
 *.swp
-
-# ckpt
-*.lock
 
 # data
 *.parquet

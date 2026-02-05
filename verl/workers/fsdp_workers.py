@@ -117,7 +117,7 @@ class RobActorRolloutRefWorker(Worker):
                                trust_remote_code=False):
         from verl.utils.model import print_model_size, update_model_config
         from verl.utils.torch_dtypes import PrecisionType
-        from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig, AutoImageProcessor, AutoModelForVision2Seq, AutoProcessor
+        from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig, AutoImageProcessor, AutoModelForImageTextToText, AutoProcessor
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP, ShardingStrategy, MixedPrecision, \
             CPUOffload
         from torch import optim
@@ -125,21 +125,21 @@ class RobActorRolloutRefWorker(Worker):
         log_gpu_memory_usage('Before init from HF AutoModel', logger=logger)
         local_path = copy_local_path_from_hdfs(model_path)
         #add oft
-         
+
         if self.config.model.vla == "openvla-oft":
             from verl.utils.vla_utils.openvla_oft.configuration_prismatic import OpenVLAConfig
             from verl.utils.vla_utils.openvla_oft.modeling_prismatic import OpenVLAForActionPrediction
             from verl.utils.vla_utils.openvla_oft.processing_prismatic import PrismaticImageProcessor, PrismaticProcessor
-            
+
             AutoConfig.register("openvla", OpenVLAConfig)
             AutoImageProcessor.register(OpenVLAConfig, PrismaticImageProcessor)
             AutoProcessor.register(OpenVLAConfig, PrismaticProcessor)
-            AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction)
+            AutoModelForImageTextToText.register(OpenVLAConfig, OpenVLAForActionPrediction)
             if self.rank == 0:
                 update_auto_map(local_path)
                 check_model_logic_mismatch(local_path)
             torch.distributed.barrier()
-            
+
         elif self.config.model.vla == "openvla":
             from verl.utils.vla_utils.openvla.configuration_prismatic import OpenVLAConfig
             from verl.utils.vla_utils.openvla.modeling_prismatic import OpenVLAForActionPrediction
@@ -147,12 +147,12 @@ class RobActorRolloutRefWorker(Worker):
             AutoConfig.register("openvla", OpenVLAConfig)
             AutoImageProcessor.register(OpenVLAConfig, PrismaticImageProcessor)
             AutoProcessor.register(OpenVLAConfig, PrismaticProcessor)
-            AutoModelForVision2Seq.register(OpenVLAConfig, OpenVLAForActionPrediction)
+            AutoModelForImageTextToText.register(OpenVLAConfig, OpenVLAForActionPrediction)
             if self.rank == 0:
                 update_auto_map(local_path)
                 check_model_logic_mismatch(local_path)
             torch.distributed.barrier()
-        
+
         #add end
 
         # note that we have to create model in fp32. Otherwise, the optimizer is in bf16, which is incorrect
@@ -187,17 +187,17 @@ class RobActorRolloutRefWorker(Worker):
         if self.rank == 0:
             print(f'Model config after override: {actor_model_config}')
 
-        
+
         init_context = get_init_weight_context_manager(use_meta_tensor=not actor_model_config.tie_word_embeddings)
 
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
             if self.config.model.vla == "openvla-oft":
-                actor_module = AutoModelForVision2Seq.from_pretrained(
+                actor_module = AutoModelForImageTextToText.from_pretrained(
                                                         pretrained_model_name_or_path=local_path,
                                                         torch_dtype=torch_dtype,
                                                         #attn_implementation="flash_attention_2",
-                                                        config=actor_model_config,              
+                                                        config=actor_model_config,
                                                         trust_remote_code=True,
                                                     )
                 if self.config.rollout.use_proprio and self.config.model.resume == False:
@@ -206,7 +206,7 @@ class RobActorRolloutRefWorker(Worker):
                     print("******Loaded pre-trained proprio projector weights*********")
                 #oft add
                 actor_module.vision_backbone.set_num_images_in_input(self.config.actor.num_images_in_input)
-                
+
                 dataset_statistics_path = os.path.join(local_path, "dataset_statistics.json")
                 if os.path.isfile(dataset_statistics_path):
                     with open(dataset_statistics_path, "r") as f:
@@ -219,14 +219,14 @@ class RobActorRolloutRefWorker(Worker):
                         "Otherwise, you may run into errors when trying to call `predict_action()` due to an absent `unnorm_key`."
                     )
             elif self.config.model.vla == "openvla":
-                actor_module = AutoModelForVision2Seq.from_pretrained(
+                actor_module = AutoModelForImageTextToText.from_pretrained(
                                                     pretrained_model_name_or_path=local_path,
                                                     torch_dtype=torch_dtype,
                                                     attn_implementation="flash_attention_2",
-                                                    config=actor_model_config,              
+                                                    config=actor_model_config,
                                                     trust_remote_code=True,
                                                 )
-           
+
             actor_module.to(torch_dtype)
 
             if enable_gradient_checkpointing:
@@ -234,7 +234,7 @@ class RobActorRolloutRefWorker(Worker):
             # lora add
             if self._is_lora:
                 print("Applying LoRA to actor module")
-                
+
                 lora_config = {
                     #'task_type': TaskType.CAUSAL_LM,
                     'r': self.config.model.lora_rank,
@@ -243,11 +243,11 @@ class RobActorRolloutRefWorker(Worker):
                     'target_modules': convert_to_regular_types(self.config.model.target_modules),
                     'init_lora_weights': "gaussian"
                 }
-                actor_module = get_peft_model(actor_module, LoraConfig(**lora_config))  
+                actor_module = get_peft_model(actor_module, LoraConfig(**lora_config))
                 actor_module.print_trainable_parameters()
             # lora end
-                
-                
+
+
         torch.distributed.barrier()
 
         if self.rank == 0:
@@ -270,11 +270,11 @@ class RobActorRolloutRefWorker(Worker):
 
         if self._is_ref:
             mixed_precision = None
-        
+
         #oft add
         auto_wrap_policy = get_fsdp_wrap_policy_vla(module=actor_module, config=fsdp_config.get('wrap_policy', None), is_lora=self.config.model.get('lora_rank', 0) > 0)
         #oft add end
-        
+
 
         print(f'wrap_policy: {auto_wrap_policy}')
 
@@ -400,7 +400,7 @@ class RobActorRolloutRefWorker(Worker):
                                                                optim_config=None,
                                                                override_model_config=override_model_config,
                                                                trust_remote_code=True)[0] #self.config.model.get('trust_remote_code', False)
-                                                                   
+
             if self._is_offload_param:
                 offload_fsdp_param_and_grad(module=self.ref_module_fsdp, offload_grad=self._is_offload_grad)
 
@@ -450,7 +450,7 @@ class RobActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def compute_entropy(self, data: DataProto):
-        
+
         data = data.to('cuda')
 
         assert self._is_actor
@@ -470,7 +470,7 @@ class RobActorRolloutRefWorker(Worker):
         # TODO: here, we should return all metrics
         output = DataProto(meta_info={'metrics': metrics})
         output = output.to('cpu')
-        
+
         if self._is_offload_param:
             offload_fsdp_param_and_grad(module=self.actor_module_fsdp, offload_grad=self._is_offload_grad)
         if self._is_offload_optimizer:
@@ -495,13 +495,13 @@ class RobActorRolloutRefWorker(Worker):
         prompts.batch = prompts.batch.cuda()
         meta_info = {'eos_token_id': self.tokenizer.eos_token_id, 'pad_token_id': self.tokenizer.pad_token_id}
         prompts.meta_info.update(meta_info)
-        
+
         #tmp_sample = prompts.meta_info.get('n_samples', -1)
-        # with Timer(name=f'gen seq will start, and the num samples are: {tmp_sample}', text="{name}: {seconds:.1f} seconds") as timer:    
+        # with Timer(name=f'gen seq will start, and the num samples are: {tmp_sample}', text="{name}: {seconds:.1f} seconds") as timer:
         #     print(f"gen seq will start, and the num samples are: {tmp_sample}")
-    
+
         with self.sharding_manager:
-            log_gpu_memory_usage('After entering sharding manager', logger=logger)    
+            log_gpu_memory_usage('After entering sharding manager', logger=logger)
             prompts = self.sharding_manager.preprocess_data(prompts)
             output = self.rollout.generate_sequences(prompts=prompts)
             log_gpu_memory_usage('After rollout generation', logger=logger)
@@ -509,12 +509,12 @@ class RobActorRolloutRefWorker(Worker):
             output = self.sharding_manager.postprocess_data(output)
             torch.cuda.synchronize()
 
-        # with Timer(name=f'gen seq end ,  old log will begin', text="{name}: {seconds:.1f} seconds") as timer:    
+        # with Timer(name=f'gen seq end ,  old log will begin', text="{name}: {seconds:.1f} seconds") as timer:
         #     print("gen seq end ,  old log will begin")
-        
+
         if self._is_actor and recompute_log_prob:
             # we should always recompute old_log_probs when it is HybridEngine
-            
+
             output.meta_info['micro_batch_size'] = self.config.rollout.log_prob_micro_batch_size
             output.meta_info['temperature'] = self.config.rollout.temperature
             output.meta_info['use_dynamic_bsz'] = self.config.rollout.log_prob_use_dynamic_bsz
@@ -567,12 +567,12 @@ class RobActorRolloutRefWorker(Worker):
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, local_path, hdfs_path=None):
         assert self._is_actor
-        
+
         import torch.distributed as dist
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
         from peft import PeftModel
         import transformers
-        
+
         if self._is_offload_param:
             load_fsdp_param_and_grad(module=self.actor_module_fsdp,
                                      device_id=torch.cuda.current_device(),
@@ -606,9 +606,9 @@ class RobActorRolloutRefWorker(Worker):
             dist.barrier()
             if dist.get_rank() == 0:
                 print(f"[rank-{self.rank}]: Saved LoRA adapter to: {lora_save_path}")
-            
+
             # save total model
-            base_vla = AutoModelForVision2Seq.from_pretrained(
+            base_vla = AutoModelForImageTextToText.from_pretrained(
                 self.config.model.path, torch_dtype=torch.bfloat16, low_cpu_mem_usage=True, trust_remote_code=True, device_map="cpu"
             )
             merged_vla = PeftModel.from_pretrained(base_vla, lora_save_path)
@@ -619,9 +619,9 @@ class RobActorRolloutRefWorker(Worker):
                 print(f"Saved merged model at: {local_path}")
 
             # Wait for merged model to be saved
-            dist.barrier()    
-                
-        
+            dist.barrier()
+
+
         # TODO: support DCP and save sharded checkpoints
         else:
             import torch.distributed
@@ -950,7 +950,7 @@ class ActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def compute_entropy(self, data: DataProto):
-        
+
         data = data.to('cuda')
 
         assert self._is_actor
@@ -970,7 +970,7 @@ class ActorRolloutRefWorker(Worker):
         # TODO: here, we should return all metrics
         output = DataProto(meta_info={'metrics': metrics})
         output = output.to('cpu')
-        
+
         if self._is_offload_param:
             offload_fsdp_param_and_grad(module=self.actor_module_fsdp, offload_grad=self._is_offload_grad)
         if self._is_offload_optimizer:
@@ -1479,7 +1479,7 @@ class PRIMERewardModelWorker(Worker):
         self.config.mini_batch_size //= world_size
         self.config.micro_batch_size //= world_size
         # build device mesh
-        
+
         from torch.distributed.device_mesh import init_device_mesh
         # TODO(sgm): support FSDP hybrid shard for larger model
         self.device_mesh = init_device_mesh('cuda', mesh_shape=(world_size,), mesh_dim_names=['fsdp'])
@@ -1682,7 +1682,7 @@ class PRIMERewardModelWorker(Worker):
             load_fsdp_param_and_grad(module=self.reward_module,device_id=torch.cuda.current_device(),load_grad=self._is_offload_grad)
             if self.reference_module is not None:
                 load_fsdp_param_and_grad(module=self.reference_module,device_id=torch.cuda.current_device(),load_grad=self._is_offload_grad)
-        
+
         token_level_scores, metrics = self.prm.update_policy(rm_data)
 
         output=DataProto.from_dict(tensors = {'rm_scores': token_level_scores}, meta_info = {'metrics': metrics})

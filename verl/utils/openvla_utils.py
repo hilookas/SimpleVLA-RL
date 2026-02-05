@@ -11,10 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import json_numpy
 import numpy as np
-import tensorflow as tf
 import torch
 from PIL import Image
-from transformers import AutoConfig, AutoImageProcessor, AutoModelForVision2Seq, AutoProcessor
+from transformers import AutoConfig, AutoImageProcessor, AutoModelForImageTextToText, AutoProcessor
 
 # Apply JSON numpy patch for serialization
 json_numpy.patch()
@@ -28,7 +27,7 @@ def update_auto_map(pretrained_checkpoint: str) -> None:
     Update the AutoMap configuration in the checkpoint config.json file.
 
     This loads the config.json file inside the checkpoint directory and overwrites
-    the AutoConfig and AutoModelForVision2Seq fields to use OpenVLA-specific classes.
+    the AutoConfig and AutoModelForImageTextToText fields to use OpenVLA-specific classes.
 
     Args:
         pretrained_checkpoint: Path to the checkpoint directory
@@ -53,7 +52,7 @@ def update_auto_map(pretrained_checkpoint: str) -> None:
 
     config["auto_map"] = {
         "AutoConfig": "configuration_prismatic.OpenVLAConfig",
-        "AutoModelForVision2Seq": "modeling_prismatic.OpenVLAForActionPrediction",
+        "AutoModelForImageTextToText": "modeling_prismatic.OpenVLAForActionPrediction",
     }
 
     # Write back the updated config
@@ -63,7 +62,7 @@ def update_auto_map(pretrained_checkpoint: str) -> None:
     print(f"Updated config.json at: {os.path.abspath(config_path)}")
     print("Changes made:")
     print('  - Set AutoConfig to "configuration_prismatic.OpenVLAConfig"')
-    print('  - Set AutoModelForVision2Seq to "modeling_prismatic.OpenVLAForActionPrediction"')
+    print('  - Set AutoModelForImageTextToText to "modeling_prismatic.OpenVLAForActionPrediction"')
 
 
 def check_identical_files(path1: Union[str, Path], path2: Union[str, Path]) -> bool:

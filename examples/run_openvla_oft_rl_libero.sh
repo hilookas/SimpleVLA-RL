@@ -15,7 +15,7 @@ CKPT_PATH="checkpoints"
 # DATASET_NAME can be libero_10 (libero_Long), libero_90, libero_spatial, libero_object, libero_goal
 DATASET_NAME="libero_10"
 VLA_NAME="openvla-oft"
-NUM_GPUS=8
+NUM_GPUS=4
 # If you want to use 2*8 GPU to RL. Set NUM_NODES=2
 NUM_NODES=1
 ALIGN_PATH="align.json"

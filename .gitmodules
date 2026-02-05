@@ -1,0 +1,6 @@
+[submodule "lib/verl"]
+	path = lib/verl
+	url = https://github.com/hilookas/verl
+[submodule "lib/LIBERO"]
+	path = lib/LIBERO
+	url = https://github.com/hilookas/LIBERO
